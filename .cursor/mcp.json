@@ -1,0 +1,36 @@
+{
+    "mcpServers": {
+      "context7": {
+        "command": "docker",
+        "args": [
+          "run", "-i", "--rm",
+          "-e", "MCP_TRANSPORT=stdio",
+          "-e", "CONTEXT7_API_KEY",
+          "mcp/context7"
+        ]
+      },
+      "github": {
+        "command": "docker",
+        "args": [
+          "run",
+          "-i",
+          "--rm",
+          "-e",
+          "GITHUB_PERSONAL_ACCESS_TOKEN",
+          "ghcr.io/github/github-mcp-server"
+        ],
+        "env": {
+          "GITHUB_PERSONAL_ACCESS_TOKEN": "${input:github_token}"
+        }
+      },
+      "exa": {
+        "command": "docker",
+        "args": [
+          "run", "-i", "--rm",
+          "-e", "EXA_API_KEY",
+          "mcp/exa"
+        ]
+      }
+    }
+  }
+  

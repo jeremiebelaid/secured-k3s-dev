@@ -1,0 +1,71 @@
+---
+- name: Tear down the entire stack
+  hosts: localhost
+  become: false
+  gather_facts: false
+  environment:
+    KUBECONFIG: "{{ kubeconfig_path }}"
+  tasks:
+    - name: Remove Coder
+      ansible.builtin.command: helm uninstall coder -n {{ coder_namespace }}
+      ignore_errors: true
+      changed_when: true
+
+    - name: Remove PostgreSQL
+      ansible.builtin.command: helm uninstall coder-db -n {{ coder_namespace }}
+      ignore_errors: true
+      changed_when: true
+
+    - name: Remove TracingPolicies
+      ansible.builtin.command: "kubectl delete -f /tmp/{{ item }} --ignore-not-found"
+      loop:
+        - policy-exec-monitor.yml
+        - policy-network-monitor.yml
+        - policy-sensitive-access.yml
+      ignore_errors: true
+      changed_when: true
+
+    - name: Remove Tetragon
+      ansible.builtin.command: helm uninstall tetragon -n kube-system
+      ignore_errors: true
+      changed_when: true
+
+    - name: Remove Cilium
+      ansible.builtin.command: helm uninstall cilium -n kube-system
+      ignore_errors: true
+      changed_when: true
+
+    - name: Remove OpenEBS
+      ansible.builtin.command: helm uninstall openebs -n openebs
+      ignore_errors: true
+      changed_when: true
+
+    - name: Delete OpenEBS namespace
+      ansible.builtin.command: kubectl delete namespace openebs --ignore-not-found
+      ignore_errors: true
+      changed_when: true
+
+    - name: Delete Coder namespace
+      ansible.builtin.command: kubectl delete namespace {{ coder_namespace }} --ignore-not-found
+      ignore_errors: true
+      changed_when: true
+
+- name: Uninstall K3s
+  hosts: localhost
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Check if k3s-uninstall script exists
+      ansible.builtin.stat:
+        path: /usr/local/bin/k3s-uninstall.sh
+      register: _k3s_uninstall
+
+    - name: Run k3s uninstall script
+      when: _k3s_uninstall.stat.exists
+      ansible.builtin.command: /usr/local/bin/k3s-uninstall.sh
+      changed_when: true
+
+    - name: Remove kubeconfig
+      ansible.builtin.file:
+        path: "{{ kubeconfig_path }}"
+        state: absent

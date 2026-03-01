@@ -1,0 +1,15 @@
+auth:
+  username: coder
+  password: "{{ coder_postgres_password }}"
+  database: coder
+
+primary:
+  persistence:
+    storageClass: "{{ coder_postgres_storage_class }}"
+    size: {{ coder_postgres_storage }}
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 100m
+    limits:
+      memory: 512Mi

@@ -1,0 +1,6 @@
+---
+tetragon_version: "1.4.0"
+tetragon_workspace_namespace: coder
+tetragon_secure_namespace: coder-secure
+tetragon_deploy_policies: true
+tetragon_deploy_enforcement: true

@@ -1,0 +1,8 @@
+---
+coder_version: "2.30.2"
+coder_namespace: coder
+coder_access_url: "http://localhost:30080"
+coder_node_port: 30080
+coder_postgres_password: "{{ lookup('env', 'CODER_PG_PASSWORD') | default('coder-dev-password', true) }}"
+coder_postgres_storage: "10Gi"
+coder_postgres_storage_class: "openebs-hostpath"

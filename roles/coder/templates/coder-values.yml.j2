@@ -1,0 +1,21 @@
+coder:
+  env:
+    - name: CODER_PG_CONNECTION_URL
+      value: "postgres://coder:{{ coder_postgres_password }}@coder-db-postgresql.{{ coder_namespace }}.svc.cluster.local:5432/coder?sslmode=disable"
+    - name: CODER_ACCESS_URL
+      value: "{{ coder_access_url }}"
+    - name: CODER_AGENT_URL
+      value: "http://coder.{{ coder_namespace }}.svc.cluster.local"
+    - name: CODER_WILDCARD_ACCESS_URL
+      value: ""
+
+  service:
+    type: NodePort
+    httpNodePort: {{ coder_node_port }}
+
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 100m
+    limits:
+      memory: 1Gi

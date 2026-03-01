@@ -1,0 +1,101 @@
+---
+- name: Verify systemd is active
+  ansible.builtin.command: systemctl is-system-running
+  register: _systemd_status
+  changed_when: false
+  failed_when: false
+
+- name: Fail if systemd is not available
+  ansible.builtin.fail:
+    msg: >-
+      systemd is not running (status={{ _systemd_status.stdout | default('unknown') }}).
+      For WSL2, enable it in /etc/wsl.conf under [boot] systemd=true, then restart WSL.
+  when: _systemd_status.stdout not in ['running', 'degraded']
+
+- name: Display kernel info
+  ansible.builtin.command: uname -r
+  register: _kernel_version
+  changed_when: false
+
+- name: Print kernel version
+  ansible.builtin.debug:
+    msg: "Kernel: {{ _kernel_version.stdout }}"
+
+- name: Install base packages
+  ansible.builtin.apt:
+    name:
+      - curl
+      - apt-transport-https
+      - ca-certificates
+      - gnupg
+      - open-iscsi
+      - nfs-common
+    state: present
+    update_cache: true
+  when: ansible_facts['os_family'] == 'Debian'
+
+- name: Enable IPv4 forwarding
+  ansible.posix.sysctl:
+    name: net.ipv4.ip_forward
+    value: "1"
+    state: present
+    reload: true
+
+- name: Enable IPv6 forwarding
+  ansible.posix.sysctl:
+    name: net.ipv6.conf.all.forwarding
+    value: "1"
+    state: present
+    reload: true
+
+- name: Load required kernel modules
+  community.general.modprobe:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - br_netfilter
+    - overlay
+    - ip_tables
+    - xt_conntrack
+
+- name: Persist kernel modules across reboots
+  ansible.builtin.copy:
+    content: |
+      br_netfilter
+      overlay
+      ip_tables
+      xt_conntrack
+    dest: /etc/modules-load.d/k3s-cilium.conf
+    mode: "0644"
+
+- name: Set bridge-nf-call-iptables
+  ansible.posix.sysctl:
+    name: "{{ item }}"
+    value: "1"
+    state: present
+    reload: true
+  loop:
+    - net.bridge.bridge-nf-call-iptables
+    - net.bridge.bridge-nf-call-ip6tables
+
+- name: Increase fs.inotify limits for large clusters
+  ansible.posix.sysctl:
+    name: "{{ item.key }}"
+    value: "{{ item.value }}"
+    state: present
+    reload: true
+  loop:
+    - { key: "fs.inotify.max_user_watches", value: "524288" }
+    - { key: "fs.inotify.max_user_instances", value: "512" }
+
+- name: Check if Helm is installed
+  ansible.builtin.command: helm version --short
+  register: _helm_check
+  changed_when: false
+  failed_when: false
+
+- name: Install Helm
+  when: _helm_check.rc != 0
+  ansible.builtin.shell:
+    cmd: curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+    creates: /usr/local/bin/helm

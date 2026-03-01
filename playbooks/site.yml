@@ -1,0 +1,56 @@
+---
+- name: System prerequisites
+  hosts: localhost
+  become: true
+  gather_facts: true
+  tags: [prereq]
+  roles:
+    - prereq
+
+- name: Install K3s
+  hosts: localhost
+  become: true
+  gather_facts: false
+  tags: [k3s]
+  roles:
+    - k3s
+
+- name: Install Cilium CNI
+  hosts: localhost
+  become: false
+  gather_facts: false
+  tags: [cilium]
+  environment:
+    KUBECONFIG: "{{ kubeconfig_path }}"
+  roles:
+    - cilium
+
+- name: Install Tetragon runtime security
+  hosts: localhost
+  become: false
+  gather_facts: false
+  tags: [tetragon]
+  environment:
+    KUBECONFIG: "{{ kubeconfig_path }}"
+  roles:
+    - tetragon
+
+- name: Install OpenEBS storage
+  hosts: localhost
+  become: false
+  gather_facts: false
+  tags: [openebs]
+  environment:
+    KUBECONFIG: "{{ kubeconfig_path }}"
+  roles:
+    - openebs
+
+- name: Install Coder dev workspaces
+  hosts: localhost
+  become: false
+  gather_facts: false
+  tags: [coder]
+  environment:
+    KUBECONFIG: "{{ kubeconfig_path }}"
+  roles:
+    - coder

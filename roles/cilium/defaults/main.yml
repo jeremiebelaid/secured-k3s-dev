@@ -1,0 +1,4 @@
+---
+cilium_version: "1.17.0"
+cilium_hubble_enabled: true
+cilium_hubble_ui_enabled: true

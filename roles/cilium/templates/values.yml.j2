@@ -1,0 +1,21 @@
+kubeProxyReplacement: true
+k8sServiceHost: "{{ api_host }}"
+k8sServicePort: {{ api_port }}
+
+operator:
+  replicas: 1
+
+ipam:
+  operator:
+    clusterPoolIPv4PodCIDRList:
+      - "{{ cluster_cidr }}"
+
+bpf:
+  masquerade: true
+
+hubble:
+  enabled: {{ cilium_hubble_enabled | lower }}
+  relay:
+    enabled: {{ cilium_hubble_enabled | lower }}
+  ui:
+    enabled: {{ cilium_hubble_ui_enabled | lower }}

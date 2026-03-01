@@ -1,0 +1,92 @@
+[tools]
+python = "3.14"
+"pipx:ansible-core" = { version = "latest", uvx_args = "--with ansible" }
+helm = "3"
+kubectl = "1.31"
+k9s = "latest"
+coder = "latest"
+uv = "latest"
+
+[env]
+_.file = [".generated.env", ".env"]
+
+[tasks.init]
+description = "Install Ansible Galaxy collections"
+run = """
+uv run python scripts/generate-env-secrets.py --env-file .generated.env --key CODER_SECRET_KEY
+ansible-galaxy collection install -r requirements.yml
+"""
+
+[tasks.env-generate]
+description = "Generate required .env vars if missing"
+run = "uv run python scripts/generate-env-secrets.py --env-file .generated.env --key CODER_SECRET_KEY"
+
+[tasks.deploy]
+description = "Deploy full stack (k3s + cilium + tetragon + coder)"
+depends = ["init"]
+run = "ansible-playbook playbooks/site.yml"
+
+[tasks.reset]
+description = "Tear down the entire stack"
+run = "ansible-playbook playbooks/reset.yml"
+
+[tasks.status]
+description = "Show cluster status"
+run = """
+echo "=== Nodes ==="
+kubectl get nodes -o wide
+echo ""
+echo "=== Cilium ==="
+kubectl -n kube-system get pods -l app.kubernetes.io/part-of=cilium
+echo ""
+echo "=== Tetragon ==="
+kubectl -n kube-system get pods -l app.kubernetes.io/name=tetragon
+echo ""
+echo "=== Coder ==="
+kubectl -n coder get pods -o wide
+"""
+
+[tasks.tetragon-logs]
+description = "Stream Tetragon security events from coder namespace"
+run = "kubectl logs -n kube-system -l app.kubernetes.io/name=tetragon -c export-stdout -f"
+
+[tasks.image-build]
+description = "Build the Podman workspace image and import into k3s"
+run = """
+docker build --progress plain -t coder-podman:latest templates/podman-workspace/build/
+docker save coder-podman:latest | sudo k3s ctr images import -
+echo "Image imported into k3s containerd"
+sudo k3s crictl images | grep coder-podman
+"""
+
+[tasks.secure-template-push]
+description = "Push the secure Podman workspace template to Coder"
+depends = ["image-build"]
+run = "coder templates push podman-workspace-secure --directory templates/podman-workspace-secure --yes"
+
+[tasks.deploy-tetragon]
+description = "Deploy only the Tetragon role (policies + enforcement)"
+depends = ["init"]
+run = "ansible-playbook playbooks/site.yml --tags tetragon --ask-become-pass"
+
+[tasks.secure-status]
+description = "Show enforcement policies and events in coder-secure namespace"
+run = """
+echo "=== TracingPolicies (coder-secure) ==="
+kubectl -n coder-secure get tracingpoliciesnamespaced 2>/dev/null || echo "No TracingPoliciesNamespaced found"
+echo ""
+echo "=== CiliumNetworkPolicies (coder-secure) ==="
+kubectl -n coder-secure get ciliumnetworkpolicies 2>/dev/null || echo "No CiliumNetworkPolicies found"
+echo ""
+echo "=== Pods (coder-secure) ==="
+kubectl -n coder-secure get pods -o wide 2>/dev/null || echo "No pods found"
+"""
+
+[tasks.egress-alert]
+description = "Alert if workspace egress exceeds 200MB/hour via proxy logs"
+run = "uv run python scripts/alert-egress-volume.py --namespace coder-secure --window 1h --threshold-mb 200"
+
+[tasks.dataleakage-test]
+description = "Run data leak prevention test suite against a Coder workspace"
+usage = 'arg "workspace" help="Coder workspace name" default="dlp-simple"'
+run = "bash scripts/demo-dataleakage.sh {{arg(name=\"workspace\")}}"

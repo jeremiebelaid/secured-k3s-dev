@@ -1,0 +1,31 @@
+---
+# Target user (resolved from the shell running ansible-playbook)
+target_user: "{{ lookup('env', 'USER') }}"
+target_home: "{{ lookup('env', 'HOME') }}"
+kubeconfig_path: "{{ target_home }}/.kube/config"
+
+# K3s
+k3s_version: "v1.31.12+k3s1"
+
+# Cluster networking
+api_host: "127.0.0.1"
+api_port: 6443
+cluster_cidr: "10.42.0.0/16"
+service_cidr: "10.43.0.0/16"
+
+# Cilium CNI
+cilium_version: "1.17.0"
+cilium_hubble_enabled: true
+cilium_hubble_ui_enabled: true
+
+# Tetragon runtime security
+tetragon_version: "1.4.0"
+tetragon_workspace_namespace: coder
+tetragon_secure_namespace: coder-secure
+
+# Coder dev workspaces
+coder_version: "2.30.2"
+coder_namespace: coder
+coder_access_url: "http://172.26.122.221:30080"
+coder_node_port: 30080
+coder_postgres_password: "{{ lookup('env', 'CODER_PG_PASSWORD') | default('coder-dev-password', true) }}"

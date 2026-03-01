@@ -1,0 +1,96 @@
+---
+- name: Ensure Coder namespace exists
+  ansible.builtin.shell: >-
+    kubectl create namespace {{ coder_namespace }}
+    --dry-run=client -o yaml | kubectl apply -f -
+  register: _coder_ns
+  changed_when: "'created' in _coder_ns.stdout"
+
+# --- PostgreSQL ---
+
+- name: Add Bitnami Helm repository
+  ansible.builtin.command: helm repo add bitnami https://charts.bitnami.com/bitnami
+  register: _bitnami_repo
+  changed_when: "'has been added' in _bitnami_repo.stdout"
+  failed_when: _bitnami_repo.rc != 0 and 'already exists' not in _bitnami_repo.stderr
+
+- name: Add Coder Helm repository
+  ansible.builtin.command: helm repo add coder-v2 https://helm.coder.com/v2
+  register: _coder_repo
+  changed_when: "'has been added' in _coder_repo.stdout"
+  failed_when: _coder_repo.rc != 0 and 'already exists' not in _coder_repo.stderr
+
+- name: Update Helm repositories
+  ansible.builtin.command: helm repo update bitnami coder-v2
+  changed_when: false
+
+- name: Template PostgreSQL Helm values
+  ansible.builtin.template:
+    src: postgres-values.yml.j2
+    dest: /tmp/coder-postgres-values.yml
+    mode: "0644"
+
+- name: Install or upgrade PostgreSQL for Coder
+  ansible.builtin.command: >-
+    helm upgrade --install coder-db bitnami/postgresql
+    --namespace {{ coder_namespace }}
+    -f /tmp/coder-postgres-values.yml
+    --wait --timeout 5m
+  register: _pg_install
+  changed_when: "'STATUS: deployed' in _pg_install.stdout"
+
+- name: Wait for PostgreSQL to be ready
+  ansible.builtin.command: >-
+    kubectl wait --for=condition=Ready pods
+    -l app.kubernetes.io/name=postgresql
+    -n {{ coder_namespace }}
+    --timeout=300s
+  register: _pg_ready
+  retries: 3
+  delay: 10
+  until: _pg_ready.rc == 0
+  changed_when: false
+
+# --- Coder ---
+
+- name: Template Coder Helm values
+  ansible.builtin.template:
+    src: coder-values.yml.j2
+    dest: /tmp/coder-values.yml
+    mode: "0644"
+
+- name: Install or upgrade Coder
+  ansible.builtin.command: >-
+    helm upgrade --install coder coder-v2/coder
+    --version {{ coder_version }}
+    --namespace {{ coder_namespace }}
+    -f /tmp/coder-values.yml
+    --wait --timeout 5m
+  register: _coder_install
+  changed_when: "'STATUS: deployed' in _coder_install.stdout"
+
+- name: Wait for Coder deployment to be ready
+  ansible.builtin.command: >-
+    kubectl rollout status deployment/coder
+    -n {{ coder_namespace }} --timeout=300s
+  register: _coder_ready
+  retries: 3
+  delay: 10
+  until: _coder_ready.rc == 0
+  changed_when: false
+
+- name: Verify Coder pods
+  ansible.builtin.command: kubectl -n {{ coder_namespace }} get pods -o wide
+  register: _coder_pods
+  changed_when: false
+
+- name: Display Coder pod status
+  ansible.builtin.debug:
+    msg: "{{ _coder_pods.stdout_lines }}"
+
+- name: Display access information
+  ansible.builtin.debug:
+    msg:
+      - "Coder is available at: {{ coder_access_url }}"
+      - "Create your first admin user by visiting the URL above."
+      - "To create workspaces with Podman, use a Kubernetes template with privileged securityContext."

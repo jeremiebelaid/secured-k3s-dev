@@ -1,0 +1,76 @@
+---
+- name: Check if k3s is already installed
+  ansible.builtin.command: k3s --version
+  register: _k3s_installed
+  changed_when: false
+  failed_when: false
+
+- name: Set installed k3s version fact
+  when: _k3s_installed.rc == 0
+  ansible.builtin.set_fact:
+    _k3s_current_version: "{{ _k3s_installed.stdout_lines[0].split(' ')[2] }}"
+
+- name: Download and install k3s
+  when: _k3s_installed.rc != 0 or (_k3s_current_version is defined and _k3s_current_version is version(k3s_version, '<'))
+  block:
+    - name: Download k3s install script
+      ansible.builtin.get_url:
+        url: https://get.k3s.io/
+        dest: /usr/local/bin/k3s-install.sh
+        mode: "0755"
+        timeout: 120
+
+    - name: Run k3s installer
+      ansible.builtin.command: /usr/local/bin/k3s-install.sh
+      environment:
+        INSTALL_K3S_VERSION: "{{ k3s_version }}"
+        INSTALL_K3S_EXEC: >-
+          server
+          --flannel-backend=none
+          --disable-network-policy
+          --disable-kube-proxy
+          {% for component in k3s_disable_components %}
+          --disable={{ component }}
+          {% endfor %}
+          --write-kubeconfig-mode=644
+          --cluster-cidr={{ cluster_cidr }}
+          --service-cidr={{ service_cidr }}
+          --tls-san={{ api_host }}
+      changed_when: true
+
+- name: Ensure k3s service is started and enabled
+  ansible.builtin.systemd:
+    name: k3s
+    state: started
+    enabled: true
+    daemon_reload: true
+
+- name: Wait for k3s API server to be reachable
+  ansible.builtin.wait_for:
+    host: "{{ api_host }}"
+    port: "{{ api_port }}"
+    timeout: 120
+
+- name: Create .kube directory for target user
+  ansible.builtin.file:
+    path: "{{ target_home }}/.kube"
+    state: directory
+    owner: "{{ target_user }}"
+    group: "{{ target_user }}"
+    mode: "0755"
+
+- name: Copy kubeconfig for target user
+  ansible.builtin.copy:
+    src: /etc/rancher/k3s/k3s.yaml
+    dest: "{{ kubeconfig_path }}"
+    remote_src: true
+    owner: "{{ target_user }}"
+    group: "{{ target_user }}"
+    mode: "0600"
+
+- name: Set server address in kubeconfig
+  ansible.builtin.replace:
+    path: "{{ kubeconfig_path }}"
+    regexp: 'server: https://127\.0\.0\.1:6443'
+    replace: "server: https://{{ api_host }}:{{ api_port }}"
+

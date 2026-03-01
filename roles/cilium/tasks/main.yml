@@ -1,0 +1,56 @@
+---
+- name: Add Cilium Helm repository
+  ansible.builtin.command: helm repo add cilium https://helm.cilium.io/
+  register: _cilium_repo
+  changed_when: "'has been added' in _cilium_repo.stdout"
+  failed_when: _cilium_repo.rc != 0 and 'already exists' not in _cilium_repo.stderr
+
+- name: Update Cilium Helm repository
+  ansible.builtin.command: helm repo update cilium
+  changed_when: false
+
+- name: Template Cilium Helm values
+  ansible.builtin.template:
+    src: values.yml.j2
+    dest: /tmp/cilium-values.yml
+    mode: "0644"
+
+- name: Install or upgrade Cilium
+  ansible.builtin.command: >-
+    helm upgrade --install cilium cilium/cilium
+    --version {{ cilium_version }}
+    --namespace kube-system
+    -f /tmp/cilium-values.yml
+    --wait --timeout 10m
+  register: _cilium_install
+  changed_when: "'STATUS: deployed' in _cilium_install.stdout"
+
+- name: Wait for Cilium agent pods to be ready
+  ansible.builtin.command: >-
+    kubectl wait --for=condition=Ready pods
+    -l app.kubernetes.io/name=cilium-agent
+    -n kube-system
+    --timeout=300s
+  register: _cilium_agent_ready
+  retries: 5
+  delay: 15
+  until: _cilium_agent_ready.rc == 0
+  changed_when: false
+
+- name: Wait for all nodes to be Ready
+  ansible.builtin.command: >-
+    kubectl wait --for=condition=Ready node --all --timeout=300s
+  register: _nodes_ready
+  retries: 5
+  delay: 10
+  until: _nodes_ready.rc == 0
+  changed_when: false
+
+- name: Verify Cilium status
+  ansible.builtin.command: kubectl -n kube-system get pods -l app.kubernetes.io/part-of=cilium -o wide
+  register: _cilium_pods
+  changed_when: false
+
+- name: Display Cilium pod status
+  ansible.builtin.debug:
+    msg: "{{ _cilium_pods.stdout_lines }}"

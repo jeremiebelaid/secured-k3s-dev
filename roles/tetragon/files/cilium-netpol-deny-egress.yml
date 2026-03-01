@@ -1,0 +1,22 @@
+---
+apiVersion: "cilium.io/v2"
+kind: CiliumNetworkPolicy
+metadata:
+  name: deny-external-egress
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: coder-workspace
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            "k8s:io.kubernetes.pod.namespace": kube-system
+            "k8s:k8s-app": kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: ANY
+    - toCIDR:
+        - "10.42.0.0/16"
+        - "10.43.0.0/16"
+        - "172.26.122.221/32"

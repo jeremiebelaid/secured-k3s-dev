@@ -1,0 +1,189 @@
+---
+- name: Add Cilium Helm repository (for Tetragon)
+  ansible.builtin.command: helm repo add cilium https://helm.cilium.io/
+  register: _tetragon_repo
+  changed_when: "'has been added' in _tetragon_repo.stdout"
+  failed_when: _tetragon_repo.rc != 0 and 'already exists' not in _tetragon_repo.stderr
+
+- name: Update Cilium Helm repository
+  ansible.builtin.command: helm repo update cilium
+  changed_when: false
+
+- name: Template Tetragon Helm values
+  ansible.builtin.template:
+    src: values.yml.j2
+    dest: /tmp/tetragon-values.yml
+    mode: "0644"
+
+- name: Install or upgrade Tetragon
+  ansible.builtin.command: >-
+    helm upgrade --install tetragon cilium/tetragon
+    --version {{ tetragon_version }}
+    --namespace kube-system
+    -f /tmp/tetragon-values.yml
+    --wait --timeout 5m
+  register: _tetragon_install
+  changed_when: "'STATUS: deployed' in _tetragon_install.stdout"
+
+- name: Wait for Tetragon daemonset to be ready
+  ansible.builtin.command: >-
+    kubectl rollout status daemonset/tetragon
+    -n kube-system --timeout=300s
+  register: _tetragon_ready
+  retries: 3
+  delay: 10
+  until: _tetragon_ready.rc == 0
+  changed_when: false
+
+- name: Ensure workspace namespace exists for TracingPolicies
+  ansible.builtin.command: >-
+    kubectl create namespace {{ tetragon_workspace_namespace }}
+    --dry-run=client -o yaml
+  register: _ns_manifest
+  changed_when: false
+
+- name: Apply workspace namespace
+  ansible.builtin.shell: >-
+    kubectl create namespace {{ tetragon_workspace_namespace }}
+    --dry-run=client -o yaml | kubectl apply -f -
+  register: _ns_apply
+  changed_when: "'created' in _ns_apply.stdout"
+
+- name: Deploy TracingPolicies for workspace security (monitoring)
+  when: tetragon_deploy_policies
+  block:
+    - name: Copy monitoring TracingPolicy manifests
+      ansible.builtin.copy:
+        src: "{{ item }}"
+        dest: "/tmp/{{ item | basename }}"
+        mode: "0644"
+      loop:
+        - policy-exec-monitor.yml
+        - policy-network-monitor.yml
+        - policy-sensitive-access.yml
+
+    - name: Apply monitoring TracingPolicies in workspace namespace
+      ansible.builtin.command: "kubectl apply -n {{ tetragon_workspace_namespace }} -f /tmp/{{ item }}"
+      loop:
+        - policy-exec-monitor.yml
+        - policy-network-monitor.yml
+        - policy-sensitive-access.yml
+      register: _policy_apply
+      changed_when: "'created' in _policy_apply.stdout or 'configured' in _policy_apply.stdout"
+
+- name: Deploy enforcement policies for secure namespace
+  when: tetragon_deploy_enforcement | default(true)
+  block:
+    - name: Ensure secure namespace exists
+      ansible.builtin.shell: >-
+        kubectl create namespace {{ tetragon_secure_namespace }}
+        --dry-run=client -o yaml | kubectl apply -f -
+      register: _secure_ns_apply
+      changed_when: "'created' in _secure_ns_apply.stdout"
+
+    - name: Grant Coder service account workspace permissions in secure namespace
+      ansible.builtin.shell: |
+        cat <<'MANIFEST' | kubectl apply -f -
+        apiVersion: rbac.authorization.k8s.io/v1
+        kind: Role
+        metadata:
+          name: coder-workspace-perms
+          namespace: {{ tetragon_secure_namespace }}
+        rules:
+          - apiGroups: [""]
+            resources: ["pods"]
+            verbs: ["create","delete","deletecollection","get","list","patch","update","watch"]
+          - apiGroups: [""]
+            resources: ["persistentvolumeclaims"]
+            verbs: ["create","delete","deletecollection","get","list","patch","update","watch"]
+          - apiGroups: ["apps"]
+            resources: ["deployments"]
+            verbs: ["create","delete","deletecollection","get","list","patch","update","watch"]
+        ---
+        apiVersion: rbac.authorization.k8s.io/v1
+        kind: RoleBinding
+        metadata:
+          name: coder
+          namespace: {{ tetragon_secure_namespace }}
+        subjects:
+          - kind: ServiceAccount
+            name: coder
+            namespace: {{ tetragon_workspace_namespace }}
+        roleRef:
+          kind: Role
+          name: coder-workspace-perms
+          apiGroup: rbac.authorization.k8s.io
+        MANIFEST
+      register: _secure_rbac
+      changed_when: "'created' in _secure_rbac.stdout"
+
+    - name: Copy enforcement policy manifests
+      ansible.builtin.copy:
+        src: "{{ item }}"
+        dest: "/tmp/{{ item | basename }}"
+        mode: "0644"
+      loop:
+        - policy-enforce-egress-block.yml
+        - policy-enforce-sensitive-read.yml
+        - policy-enforce-dlp-zone-read.yml
+        - dlp-egress-proxy.yml
+        - cilium-netpol-egress-via-proxy.yml
+
+    - name: Apply monitoring TracingPolicies in secure namespace
+      ansible.builtin.command: "kubectl apply -n {{ tetragon_secure_namespace }} -f /tmp/{{ item }}"
+      loop:
+        - policy-exec-monitor.yml
+        - policy-network-monitor.yml
+        - policy-sensitive-access.yml
+      register: _secure_monitor_apply
+      changed_when: "'created' in _secure_monitor_apply.stdout or 'configured' in _secure_monitor_apply.stdout"
+
+    - name: Apply enforcement TracingPolicies in secure namespace
+      ansible.builtin.command: "kubectl apply -n {{ tetragon_secure_namespace }} -f /tmp/{{ item }}"
+      loop:
+        - policy-enforce-egress-block.yml
+        - policy-enforce-sensitive-read.yml
+        - policy-enforce-dlp-zone-read.yml
+      register: _enforce_apply
+      changed_when: "'created' in _enforce_apply.stdout or 'configured' in _enforce_apply.stdout"
+
+    - name: Deploy DLP egress proxy in secure namespace
+      ansible.builtin.command: "kubectl apply -n {{ tetragon_secure_namespace }} -f /tmp/dlp-egress-proxy.yml"
+      register: _proxy_apply
+      changed_when: "'created' in _proxy_apply.stdout or 'configured' in _proxy_apply.stdout"
+
+    - name: Restart DLP egress proxy when config changes
+      ansible.builtin.command: >-
+        kubectl rollout restart deployment/dlp-egress-proxy
+        -n {{ tetragon_secure_namespace }}
+      when: _proxy_apply is changed
+      register: _proxy_restart
+      changed_when: true
+
+    - name: Wait for DLP egress proxy to be ready
+      ansible.builtin.command: >-
+        kubectl wait --for=condition=Available deployment/dlp-egress-proxy
+        -n {{ tetragon_secure_namespace }} --timeout=180s
+      register: _proxy_ready
+      changed_when: false
+
+    - name: Apply CiliumNetworkPolicy for workspace egress via proxy
+      ansible.builtin.command: "kubectl apply -n {{ tetragon_secure_namespace }} -f /tmp/cilium-netpol-egress-via-proxy.yml"
+      register: _proxy_netpol_apply
+      changed_when: "'created' in _proxy_netpol_apply.stdout or 'configured' in _proxy_netpol_apply.stdout"
+
+    - name: Remove legacy deny-all CiliumNetworkPolicy in secure namespace
+      ansible.builtin.command: >-
+        kubectl delete ciliumnetworkpolicy deny-external-egress
+        -n {{ tetragon_secure_namespace }} --ignore-not-found
+      register: _netpol_delete
+      changed_when: "'deleted' in _netpol_delete.stdout"
+
+- name: Verify Tetragon status
+  ansible.builtin.command: kubectl -n kube-system get pods -l app.kubernetes.io/name=tetragon -o wide
+  register: _tetragon_pods
+  changed_when: false
+
+- name: Display Tetragon pod status
+  ansible.builtin.debug:
+    msg: "{{ _tetragon_pods.stdout_lines }}"

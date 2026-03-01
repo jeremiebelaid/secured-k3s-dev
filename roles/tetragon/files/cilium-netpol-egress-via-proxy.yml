@@ -1,0 +1,43 @@
+---
+apiVersion: "cilium.io/v2"
+kind: CiliumNetworkPolicy
+metadata:
+  name: workspace-egress-via-proxy
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: coder-workspace
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            "k8s:io.kubernetes.pod.namespace": kube-system
+            "k8s:k8s-app": kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: ANY
+    - toEndpoints:
+        - matchLabels:
+            "k8s:io.kubernetes.pod.namespace": coder-secure
+            "k8s:app.kubernetes.io/name": dlp-egress-proxy
+      toPorts:
+        - ports:
+            - port: "3128"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            "k8s:io.kubernetes.pod.namespace": coder
+            "k8s:app.kubernetes.io/instance": coder
+            "k8s:app.kubernetes.io/name": coder
+      toPorts:
+        - ports:
+            - port: "80"
+              protocol: TCP
+            - port: "8080"
+              protocol: TCP
+    - toEntities:
+        - host
+      toPorts:
+        - ports:
+            - port: "30080"
+              protocol: TCP

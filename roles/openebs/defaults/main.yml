@@ -1,0 +1,11 @@
+---
+openebs_namespace: openebs
+openebs_repo_url: "https://openebs.github.io/openebs"
+openebs_release_name: openebs
+openebs_chart_ref: "openebs/openebs"
+openebs_storage_class: "openebs-hostpath"
+openebs_mayastor_enabled: false
+openebs_lvm_enabled: false
+openebs_zfs_enabled: false
+openebs_loki_enabled: false
+openebs_alloy_enabled: false

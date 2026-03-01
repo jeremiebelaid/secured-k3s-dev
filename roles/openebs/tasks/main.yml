@@ -1,0 +1,33 @@
+---
+- name: Add OpenEBS Helm repository
+  ansible.builtin.command: helm repo add openebs {{ openebs_repo_url }}
+  register: _openebs_repo
+  changed_when: "'has been added' in _openebs_repo.stdout"
+  failed_when: _openebs_repo.rc != 0 and 'already exists' not in _openebs_repo.stderr
+
+- name: Update OpenEBS Helm repository
+  ansible.builtin.command: helm repo update openebs
+  changed_when: false
+
+- name: Install or upgrade OpenEBS
+  ansible.builtin.command: >-
+    helm upgrade --install {{ openebs_release_name }} {{ openebs_chart_ref }}
+    --namespace {{ openebs_namespace }}
+    --create-namespace
+    --reset-values
+    --set engines.local.lvm.enabled={{ openebs_lvm_enabled | lower }}
+    --set engines.local.zfs.enabled={{ openebs_zfs_enabled | lower }}
+    --set engines.replicated.mayastor.enabled={{ openebs_mayastor_enabled | lower }}
+    --set loki.enabled={{ openebs_loki_enabled | lower }}
+    --set alloy.enabled={{ openebs_alloy_enabled | lower }}
+    --wait --timeout 10m
+  register: _openebs_install
+  changed_when: "'STATUS: deployed' in _openebs_install.stdout"
+
+- name: Wait for OpenEBS hostpath StorageClass
+  ansible.builtin.command: kubectl get storageclass {{ openebs_storage_class }}
+  register: _openebs_sc
+  retries: 10
+  delay: 6
+  until: _openebs_sc.rc == 0
+  changed_when: false
