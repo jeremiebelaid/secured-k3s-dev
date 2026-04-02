@@ -6,6 +6,7 @@ kubectl = "1.31"
 k9s = "latest"
 coder = "latest"
 uv = "latest"
+terraform = "1"
 
 [env]
 _.file = [".generated.env", ".env"]
@@ -90,3 +91,55 @@ run = "uv run python scripts/alert-egress-volume.py --namespace coder-secure --w
 description = "Run data leak prevention test suite against a Coder workspace"
 usage = 'arg "workspace" help="Coder workspace name" default="dlp-simple"'
 run = "bash scripts/demo-dataleakage.sh {{arg(name=\"workspace\")}}"
+
+[tasks.deploy-tailscale]
+description = "Deploy only the Tailscale VPN role"
+depends = ["init"]
+run = "ansible-playbook playbooks/site.yml --tags tailscale --ask-become-pass"
+
+[tasks.vmss-init]
+description = "Initialize Terraform for Azure VMSS scraper nodes"
+run = "terraform -chdir=terraform/azure-vmss init"
+
+[tasks.vmss-plan]
+description = "Plan Azure VMSS changes"
+run = """
+export TF_VAR_k3s_master_tailscale_ip="$(tailscale ip -4)"
+export TF_VAR_k3s_token="$(sudo cat /var/lib/rancher/k3s/server/node-token)"
+export TF_VAR_tailscale_api_key="${TAILSCALE_API_KEY:?Set TAILSCALE_API_KEY in .env}"
+export TF_VAR_tailscale_tailnet="${TAILSCALE_TAILNET:?Set TAILSCALE_TAILNET in .env}"
+export TF_VAR_azure_tenant_id="$(az account show --query tenantId -o tsv)"
+terraform -chdir=terraform/azure-vmss plan
+"""
+
+[tasks.vmss-apply]
+description = "Apply Azure VMSS (create/update scraper nodes)"
+run = """
+export TF_VAR_k3s_master_tailscale_ip="$(tailscale ip -4)"
+export TF_VAR_k3s_token="$(sudo cat /var/lib/rancher/k3s/server/node-token)"
+export TF_VAR_tailscale_api_key="${TAILSCALE_API_KEY:?Set TAILSCALE_API_KEY in .env}"
+export TF_VAR_tailscale_tailnet="${TAILSCALE_TAILNET:?Set TAILSCALE_TAILNET in .env}"
+export TF_VAR_azure_tenant_id="$(az account show --query tenantId -o tsv)"
+terraform -chdir=terraform/azure-vmss apply
+"""
+
+[tasks.vmss-destroy]
+description = "Destroy Azure VMSS scraper nodes"
+run = """
+export TF_VAR_k3s_master_tailscale_ip="$(tailscale ip -4)"
+export TF_VAR_k3s_token="$(sudo cat /var/lib/rancher/k3s/server/node-token)"
+export TF_VAR_tailscale_api_key="${TAILSCALE_API_KEY:?Set TAILSCALE_API_KEY in .env}"
+export TF_VAR_tailscale_tailnet="${TAILSCALE_TAILNET:?Set TAILSCALE_TAILNET in .env}"
+export TF_VAR_azure_tenant_id="$(az account show --query tenantId -o tsv)"
+terraform -chdir=terraform/azure-vmss destroy
+"""
+
+[tasks.vmss-status]
+description = "Show VMSS nodes in the k3s cluster"
+run = """
+echo "=== k3s nodes ==="
+kubectl get nodes -o wide -l node-role=scraper
+echo ""
+echo "=== Tailscale peers ==="
+tailscale status
+"""

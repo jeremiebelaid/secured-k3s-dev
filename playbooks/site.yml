@@ -7,6 +7,31 @@
   roles:
     - prereq
 
+- name: Install and configure Tailscale VPN
+  hosts: localhost
+  become: true
+  gather_facts: false
+  tags: [tailscale]
+  roles:
+    - tailscale
+
+- name: Resolve Tailscale IP (needed by k3s and cilium)
+  hosts: localhost
+  become: false
+  gather_facts: false
+  tags: [always]
+  tasks:
+    - name: Check if Tailscale is available
+      ansible.builtin.command: tailscale ip -4
+      register: _ts_ip_lookup
+      changed_when: false
+      failed_when: false
+
+    - name: Set tailscale_ip fact for downstream roles
+      ansible.builtin.set_fact:
+        tailscale_ip: "{{ _ts_ip_lookup.stdout | trim }}"
+      when: _ts_ip_lookup.rc == 0 and _ts_ip_lookup.stdout | trim | length > 0
+
 - name: Install K3s
   hosts: localhost
   become: true
@@ -44,6 +69,16 @@
     KUBECONFIG: "{{ kubeconfig_path }}"
   roles:
     - openebs
+
+- name: Install Azure Disk CSI driver
+  hosts: localhost
+  become: false
+  gather_facts: false
+  tags: [azure-disk-csi]
+  environment:
+    KUBECONFIG: "{{ kubeconfig_path }}"
+  roles:
+    - azure-disk-csi
 
 - name: Install Coder dev workspaces
   hosts: localhost

@@ -1,0 +1,16 @@
+azure_subscription_id   = "394058e8-419b-4eb4-bc98-58f37c4a0c48"
+location                = "francecentral"
+resource_prefix         = "mf-scraper"
+vm_sku                  = "Standard_D4s_v3"
+instance_count          = 2
+use_spot                = true
+
+# Obtain from: tailscale ip -4 (on the k3s server node)
+k3s_master_tailscale_ip = "100.x.x.x"
+
+# Obtain from: sudo cat /var/lib/rancher/k3s/server/node-token
+k3s_token               = "K10..."
+
+# Obtain from: https://login.tailscale.com/admin/settings/keys
+tailscale_api_key       = "tskey-api-..."
+tailscale_tailnet       = "your-tailnet.ts.net"

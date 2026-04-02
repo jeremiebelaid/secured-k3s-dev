@@ -10,8 +10,42 @@
   ansible.builtin.set_fact:
     _k3s_current_version: "{{ _k3s_installed.stdout_lines[0].split(' ')[2] }}"
 
-- name: Download and install k3s
-  when: _k3s_installed.rc != 0 or (_k3s_current_version is defined and _k3s_current_version is version(k3s_version, '<'))
+- name: Build desired INSTALL_K3S_EXEC args
+  ansible.builtin.set_fact:
+    _k3s_exec_args: >-
+      server
+      --flannel-backend=none
+      --disable-network-policy
+      --disable-kube-proxy
+      {% for component in k3s_disable_components %}
+      --disable={{ component }}
+      {% endfor %}
+      --write-kubeconfig-mode=644
+      --cluster-cidr={{ cluster_cidr }}
+      --service-cidr={{ service_cidr }}
+      {% for san in k3s_tls_sans | default(['127.0.0.1']) %}
+      --tls-san={{ san }}
+      {% endfor %}
+      --bind-address=0.0.0.0
+      --advertise-address={{ tailscale_ip | default('127.0.0.1') }}
+      --node-external-ip={{ tailscale_ip | default('127.0.0.1') }}
+
+- name: Check current k3s systemd ExecStart
+  ansible.builtin.command: systemctl show k3s --property=ExecStart --no-pager
+  register: _k3s_current_exec
+  changed_when: false
+  failed_when: false
+  when: _k3s_installed.rc == 0
+
+- name: Detect if k3s needs reconfiguration
+  ansible.builtin.set_fact:
+    _k3s_needs_install: >-
+      {{ _k3s_installed.rc != 0
+         or (_k3s_current_version is defined and _k3s_current_version is version(k3s_version, '<'))
+         or (tailscale_ip is defined and tailscale_ip not in (_k3s_current_exec.stdout | default(''))) }}
+
+- name: Download and install/reconfigure k3s
+  when: _k3s_needs_install | bool
   block:
     - name: Download k3s install script
       ansible.builtin.get_url:
@@ -20,34 +54,31 @@
         mode: "0755"
         timeout: 120
 
+    - name: Remove dynamic TLS certs so k3s regenerates with new SANs
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /var/lib/rancher/k3s/server/tls/dynamic-cert.json
+      when: _k3s_installed.rc == 0
+
     - name: Run k3s installer
       ansible.builtin.command: /usr/local/bin/k3s-install.sh
       environment:
         INSTALL_K3S_VERSION: "{{ k3s_version }}"
-        INSTALL_K3S_EXEC: >-
-          server
-          --flannel-backend=none
-          --disable-network-policy
-          --disable-kube-proxy
-          {% for component in k3s_disable_components %}
-          --disable={{ component }}
-          {% endfor %}
-          --write-kubeconfig-mode=644
-          --cluster-cidr={{ cluster_cidr }}
-          --service-cidr={{ service_cidr }}
-          --tls-san={{ api_host }}
+        INSTALL_K3S_EXEC: "{{ _k3s_exec_args }}"
       changed_when: true
 
 - name: Ensure k3s service is started and enabled
   ansible.builtin.systemd:
     name: k3s
-    state: started
+    state: "{{ 'restarted' if (_k3s_needs_install | bool) else 'started' }}"
     enabled: true
     daemon_reload: true
 
 - name: Wait for k3s API server to be reachable
   ansible.builtin.wait_for:
-    host: "{{ api_host }}"
+    host: 127.0.0.1
     port: "{{ api_port }}"
     timeout: 120
 
@@ -68,9 +99,23 @@
     group: "{{ target_user }}"
     mode: "0600"
 
-- name: Set server address in kubeconfig
+- name: Set server address in kubeconfig (use localhost for local access)
   ansible.builtin.replace:
     path: "{{ kubeconfig_path }}"
-    regexp: 'server: https://127\.0\.0\.1:6443'
-    replace: "server: https://{{ api_host }}:{{ api_port }}"
+    regexp: 'server: https://[^:]+:6443'
+    replace: "server: https://127.0.0.1:{{ api_port }}"
+
+- name: Extract k3s node token for remote agents
+  ansible.builtin.slurp:
+    src: /var/lib/rancher/k3s/server/node-token
+  register: _k3s_node_token
+  become: true
+
+- name: Display k3s agent join info
+  ansible.builtin.debug:
+    msg: |
+      === Remote agent join command ===
+      K3S_URL=https://{{ tailscale_ip | default('127.0.0.1') }}:{{ api_port }}
+      K3S_TOKEN={{ _k3s_node_token.content | b64decode | trim }}
+      curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION={{ k3s_version }} K3S_URL=$K3S_URL K3S_TOKEN=$K3S_TOKEN sh -s - agent
 

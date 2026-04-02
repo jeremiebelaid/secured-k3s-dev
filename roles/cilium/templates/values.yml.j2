@@ -1,5 +1,5 @@
 kubeProxyReplacement: true
-k8sServiceHost: "{{ api_host }}"
+k8sServiceHost: "{{ tailscale_ip | default('127.0.0.1') }}"
 k8sServicePort: {{ api_port }}
 
 operator:
@@ -12,6 +12,11 @@ ipam:
 
 bpf:
   masquerade: true
+
+encryption:
+  enabled: {{ cilium_wireguard_enabled | default(true) | lower }}
+  type: wireguard
+  nodeEncryption: {{ cilium_wireguard_node_encryption | default(true) | lower }}
 
 hubble:
   enabled: {{ cilium_hubble_enabled | lower }}

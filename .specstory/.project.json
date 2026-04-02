@@ -1,6 +1,7 @@
 {
   "workspace_id": "7fa3-4d10-10af-bba9",
   "workspace_id_at": "2026-02-26T22:37:17.909Z",
-  "project_name": "infra",
-  "cloud_sync": false
+  "git_id": "7cc1-7342-e1f4-5c1c",
+  "git_id_at": "2026-04-01T09:41:54Z",
+  "project_name": "secured-k3s-dev"
 }

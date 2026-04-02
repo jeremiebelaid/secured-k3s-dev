@@ -1,0 +1,15 @@
+---
+azuredisk_csi_version: "v1.34.2"
+azuredisk_csi_namespace: kube-system
+
+azure_cloud_config:
+  cloud: AzurePublicCloud
+  tenantId: "{{ lookup('env', 'TF_VAR_azure_tenant_id') | default('930f9de9-dca2-467e-85f9-ce76cb1551fa', true) }}"
+  subscriptionId: "{{ lookup('env', 'TF_VAR_azure_subscription_id') | default('394058e8-419b-4eb4-bc98-58f37c4a0c48', true) }}"
+  resourceGroup: "mf-scraper-rg"
+  location: "francecentral"
+  vmType: "vmss"
+  useManagedIdentityExtension: true
+  useInstanceMetadata: true
+  aadClientId: ""
+  aadClientSecret: ""

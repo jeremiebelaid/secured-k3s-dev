@@ -1,0 +1,57 @@
+---
+- name: Check if Tailscale is already installed
+  ansible.builtin.command: tailscale version
+  register: _ts_installed
+  changed_when: false
+  failed_when: false
+
+- name: Install Tailscale
+  when: _ts_installed.rc != 0
+  block:
+    - name: Download Tailscale install script
+      ansible.builtin.get_url:
+        url: https://tailscale.com/install.sh
+        dest: /tmp/tailscale-install.sh
+        mode: "0755"
+        timeout: 120
+
+    - name: Run Tailscale installer
+      ansible.builtin.shell: /tmp/tailscale-install.sh
+      changed_when: true
+
+- name: Ensure tailscaled service is running
+  ansible.builtin.systemd:
+    name: tailscaled
+    state: started
+    enabled: true
+
+- name: Check Tailscale status
+  ansible.builtin.command: tailscale status --json
+  register: _ts_status_json
+  changed_when: false
+  failed_when: false
+
+- name: Parse Tailscale login state
+  ansible.builtin.set_fact:
+    _ts_logged_in: "{{ (_ts_status_json.stdout | from_json).BackendState == 'Running' }}"
+  when: _ts_status_json.rc == 0
+
+- name: Authenticate Tailscale (interactive - opens browser link)
+  ansible.builtin.command: >-
+    tailscale up {{ tailscale_up_args }}
+  register: _ts_up
+  changed_when: "'Success' in _ts_up.stdout or _ts_up.rc == 0"
+  when: not (_ts_logged_in | default(false))
+
+- name: Get Tailscale IP
+  ansible.builtin.command: tailscale ip -4
+  register: _ts_ip
+  changed_when: false
+
+- name: Display Tailscale IP
+  ansible.builtin.debug:
+    msg: "Tailscale IPv4: {{ _ts_ip.stdout | trim }}"
+
+- name: Store Tailscale IP as fact
+  ansible.builtin.set_fact:
+    tailscale_ip: "{{ _ts_ip.stdout | trim }}"

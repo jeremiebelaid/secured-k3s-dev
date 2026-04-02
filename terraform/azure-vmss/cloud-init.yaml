@@ -1,0 +1,68 @@
+#cloud-config
+package_update: true
+package_upgrade: true
+
+packages:
+  - curl
+  - ca-certificates
+  - apt-transport-https
+
+write_files:
+  - path: /etc/sysctl.d/99-k3s.conf
+    content: |
+      net.ipv4.ip_forward = 1
+      net.ipv6.conf.all.forwarding = 1
+      net.bridge.bridge-nf-call-iptables = 1
+      net.bridge.bridge-nf-call-ip6tables = 1
+      fs.inotify.max_user_watches = 524288
+      fs.inotify.max_user_instances = 512
+
+  - path: /etc/kubernetes/azure.json
+    permissions: "0600"
+    content: |
+      {
+        "cloud": "AzurePublicCloud",
+        "tenantId": "${azure_tenant_id}",
+        "subscriptionId": "${azure_subscription_id}",
+        "resourceGroup": "${azure_resource_group}",
+        "location": "${azure_location}",
+        "vmType": "vmss",
+        "vmssCacheTTLInSeconds": 100,
+        "vmssVirtualMachinesCacheTTLInSeconds": 100,
+        "useManagedIdentityExtension": true,
+        "useInstanceMetadata": true,
+        "aadClientId": "",
+        "aadClientSecret": ""
+      }
+
+runcmd:
+  # Apply sysctl settings
+  - sysctl --system
+
+  # Load required kernel modules
+  - modprobe br_netfilter overlay ip_tables xt_conntrack
+  - echo -e "br_netfilter\noverlay\nip_tables\nxt_conntrack" > /etc/modules-load.d/k3s-cilium.conf
+
+  # Install Tailscale
+  - curl -fsSL https://tailscale.com/install.sh | sh
+  - systemctl enable --now tailscaled
+  - tailscale up --authkey=${tailscale_auth_key} --accept-routes --accept-dns=false
+
+  # Wait for Tailscale to establish connectivity
+  - |
+    for i in $(seq 1 30); do
+      tailscale status >/dev/null 2>&1 && break
+      sleep 2
+    done
+
+  # Capture Tailscale IP for k3s node advertisement
+  - |
+    TAILSCALE_IP=$(tailscale ip -4)
+    curl -sfL https://get.k3s.io | \
+      INSTALL_K3S_VERSION="${k3s_version}" \
+      K3S_URL="${k3s_url}" \
+      K3S_TOKEN="${k3s_token}" \
+      INSTALL_K3S_EXEC="agent --node-label=${k3s_node_labels} --node-external-ip=$TAILSCALE_IP --node-ip=$TAILSCALE_IP" \
+      sh -
+
+  - systemctl enable k3s-agent

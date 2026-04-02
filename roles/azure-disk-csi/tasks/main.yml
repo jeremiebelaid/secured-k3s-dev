@@ -1,0 +1,110 @@
+---
+- name: Create azure-cloud-provider secret for CSI driver
+  block:
+    - name: Template azure cloud config
+      ansible.builtin.template:
+        src: azure-cloud-config.json.j2
+        dest: /tmp/azure-cloud-config.json
+        mode: "0600"
+
+    - name: Check if azure-cloud-provider secret exists
+      ansible.builtin.command: >-
+        kubectl -n {{ azuredisk_csi_namespace }} get secret azure-cloud-provider
+      register: _azure_secret_check
+      changed_when: false
+      failed_when: false
+
+    - name: Create azure-cloud-provider secret
+      ansible.builtin.command: >-
+        kubectl create secret generic azure-cloud-provider
+        --namespace {{ azuredisk_csi_namespace }}
+        --from-file=cloud-config=/tmp/azure-cloud-config.json
+      when: _azure_secret_check.rc != 0
+
+    - name: Update azure-cloud-provider secret
+      ansible.builtin.shell: >-
+        kubectl create secret generic azure-cloud-provider
+        --namespace {{ azuredisk_csi_namespace }}
+        --from-file=cloud-config=/tmp/azure-cloud-config.json
+        --dry-run=client -o yaml | kubectl apply -f -
+      when: _azure_secret_check.rc == 0
+      changed_when: "'configured' in _azure_secret_update.stdout"
+      register: _azure_secret_update
+
+    - name: Remove temp cloud config file
+      ansible.builtin.file:
+        path: /tmp/azure-cloud-config.json
+        state: absent
+
+- name: Add Azure Disk CSI Helm repository
+  ansible.builtin.command: >-
+    helm repo add azuredisk-csi-driver
+    https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/charts
+  register: _azuredisk_repo
+  changed_when: "'has been added' in _azuredisk_repo.stdout"
+  failed_when: _azuredisk_repo.rc != 0 and 'already exists' not in _azuredisk_repo.stderr
+
+- name: Update Azure Disk CSI Helm repository
+  ansible.builtin.command: helm repo update azuredisk-csi-driver
+  changed_when: false
+
+- name: Template Azure Disk CSI Helm values
+  ansible.builtin.template:
+    src: values.yml.j2
+    dest: /tmp/azuredisk-csi-values.yml
+    mode: "0644"
+
+- name: Install or upgrade Azure Disk CSI driver
+  ansible.builtin.command: >-
+    helm upgrade --install azuredisk-csi-driver
+    azuredisk-csi-driver/azuredisk-csi-driver
+    --version {{ azuredisk_csi_version }}
+    --namespace {{ azuredisk_csi_namespace }}
+    -f /tmp/azuredisk-csi-values.yml
+    --wait --timeout 5m
+  register: _azuredisk_install
+  changed_when: "'STATUS: deployed' in _azuredisk_install.stdout"
+
+- name: Wait for CSI controller pod to be ready
+  ansible.builtin.command: >-
+    kubectl wait --for=condition=Ready pods
+    -l app=csi-azuredisk-controller
+    -n {{ azuredisk_csi_namespace }}
+    --timeout=120s
+  register: _csi_ctrl_ready
+  retries: 3
+  delay: 10
+  until: _csi_ctrl_ready.rc == 0
+  changed_when: false
+
+- name: Wait for CSI node pods to be ready
+  ansible.builtin.command: >-
+    kubectl wait --for=condition=Ready pods
+    -l app=csi-azuredisk-node
+    -n {{ azuredisk_csi_namespace }}
+    --timeout=120s
+  register: _csi_node_ready
+  retries: 3
+  delay: 10
+  until: _csi_node_ready.rc == 0
+  changed_when: false
+
+- name: Template StorageClasses
+  ansible.builtin.template:
+    src: storageclass.yml.j2
+    dest: /tmp/azuredisk-storageclasses.yml
+    mode: "0644"
+
+- name: Apply StorageClasses
+  ansible.builtin.command: kubectl apply -f /tmp/azuredisk-storageclasses.yml
+  register: _sc_apply
+  changed_when: "'created' in _sc_apply.stdout or 'configured' in _sc_apply.stdout"
+
+- name: Verify CSI driver and StorageClasses
+  ansible.builtin.command: kubectl get csidrivers,storageclasses
+  register: _csi_verify
+  changed_when: false
+
+- name: Display CSI driver status
+  ansible.builtin.debug:
+    msg: "{{ _csi_verify.stdout_lines }}"

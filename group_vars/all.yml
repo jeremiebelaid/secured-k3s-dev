@@ -8,15 +8,23 @@ kubeconfig_path: "{{ target_home }}/.kube/config"
 k3s_version: "v1.31.12+k3s1"
 
 # Cluster networking
-api_host: "127.0.0.1"
+api_host: "0.0.0.0"
 api_port: 6443
 cluster_cidr: "10.42.0.0/16"
 service_cidr: "10.43.0.0/16"
+
+# Additional TLS SANs for remote agent access (Tailscale IP, WSL2 IP)
+k3s_tls_sans:
+  - "127.0.0.1"
+  - "172.26.122.221"
+  - "{{ tailscale_ip | default('100.64.0.1') }}"
 
 # Cilium CNI
 cilium_version: "1.17.0"
 cilium_hubble_enabled: true
 cilium_hubble_ui_enabled: true
+cilium_wireguard_enabled: true
+cilium_wireguard_node_encryption: true
 
 # Tetragon runtime security
 tetragon_version: "1.4.0"

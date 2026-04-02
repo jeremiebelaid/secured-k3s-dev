@@ -1,0 +1,33 @@
+cloud: AzurePublicCloud
+
+controller:
+  replicas: 1
+  cloudConfigSecretName: azure-cloud-provider
+  cloudConfigSecretNamespace: {{ azuredisk_csi_namespace }}
+  hostNetwork: true
+  nodeSelector:
+    node-role: scraper
+  tolerations:
+    - key: "node-role.kubernetes.io/master"
+      operator: "Exists"
+      effect: "NoSchedule"
+    - key: "node-role.kubernetes.io/control-plane"
+      operator: "Exists"
+      effect: "NoSchedule"
+
+node:
+  cloudConfigSecretName: azure-cloud-provider
+  cloudConfigSecretNamespace: {{ azuredisk_csi_namespace }}
+
+linux:
+  enabled: true
+  kubelet: /var/lib/kubelet
+  hostNetwork: true
+  nodeSelector:
+    node-role: scraper
+
+windows:
+  enabled: false
+
+snapshot:
+  enabled: false
