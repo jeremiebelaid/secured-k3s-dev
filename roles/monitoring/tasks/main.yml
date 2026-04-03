@@ -1,0 +1,77 @@
+﻿---
+- name: Add Prometheus community Helm repository
+  ansible.builtin.command: helm repo add prometheus-community {{ monitoring_repo_url }}
+  register: _prom_repo
+  changed_when: "'has been added' in _prom_repo.stdout"
+  failed_when: _prom_repo.rc != 0 and 'already exists' not in _prom_repo.stderr
+
+- name: Update Prometheus community Helm repository
+  ansible.builtin.command: helm repo update prometheus-community
+  changed_when: false
+
+- name: Template monitoring Helm values
+  ansible.builtin.template:
+    src: values.yml.j2
+    dest: /tmp/monitoring-values.yml
+    mode: "0644"
+
+- name: Install or upgrade kube-prometheus-stack
+  ansible.builtin.command: >-
+    helm upgrade --install {{ monitoring_release_name }}
+    prometheus-community/kube-prometheus-stack
+    --version {{ monitoring_chart_version }}
+    --namespace {{ monitoring_namespace }}
+    --create-namespace
+    -f /tmp/monitoring-values.yml
+    --wait --timeout 10m
+  register: _prom_install
+  changed_when: "'STATUS: deployed' in _prom_install.stdout"
+
+- name: Wait for Prometheus pods to be ready
+  ansible.builtin.command: >-
+    kubectl wait --for=condition=Ready pods
+    -l app.kubernetes.io/instance={{ monitoring_release_name }}
+    -n {{ monitoring_namespace }}
+    --timeout=300s
+  register: _prom_ready
+  retries: 5
+  delay: 15
+  until: _prom_ready.rc == 0
+  changed_when: false
+
+- name: Template CloakBrowser dashboard JSON
+  ansible.builtin.template:
+    src: dashboard-cloakbrowser.json.j2
+    dest: /tmp/dashboard-cloakbrowser.json
+    mode: "0644"
+
+- name: Strip UTF-8 BOM from dashboard JSON
+  ansible.builtin.shell: sed -i '1s/^\xEF\xBB\xBF//' /tmp/dashboard-cloakbrowser.json
+  changed_when: false
+
+- name: Apply CloakBrowser dashboard ConfigMap
+  ansible.builtin.shell: |
+    kubectl create configmap grafana-dashboard-cloakbrowser \
+      --from-file=cloakbrowser.json=/tmp/dashboard-cloakbrowser.json \
+      -n {{ monitoring_namespace }} \
+      --dry-run=client -o yaml | \
+    kubectl label -f - --local --dry-run=client -o yaml grafana_dashboard=1 | \
+    kubectl apply -f -
+  changed_when: true
+
+- name: Verify monitoring deployment
+  ansible.builtin.command: kubectl -n {{ monitoring_namespace }} get pods -o wide
+  register: _monitoring_pods
+  changed_when: false
+
+- name: Display monitoring pod status
+  ansible.builtin.debug:
+    msg: "{{ _monitoring_pods.stdout_lines }}"
+
+- name: Display Grafana access info
+  ansible.builtin.debug:
+    msg: |
+      === Grafana ===
+      URL: http://{{ tailscale_ip | default('127.0.0.1') }}:{{ monitoring_grafana_node_port }}
+      User: admin
+      Password: {{ monitoring_grafana_admin_password }}

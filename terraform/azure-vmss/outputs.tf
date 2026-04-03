@@ -1,4 +1,4 @@
-output "vmss_id" {
+﻿output "vmss_id" {
   description = "ID of the VMSS"
   value       = azurerm_linux_virtual_machine_scale_set.scraper.id
 }
@@ -30,4 +30,9 @@ output "agent_join_info" {
 output "vmss_identity_principal_id" {
   description = "Principal ID of the VMSS system-assigned managed identity"
   value       = azurerm_linux_virtual_machine_scale_set.scraper.identity[0].principal_id
+}
+
+output "nat_gateway_public_ip" {
+  description = "Public IP used by all VMSS instances for outbound traffic"
+  value       = azurerm_public_ip.nat.ip_address
 }

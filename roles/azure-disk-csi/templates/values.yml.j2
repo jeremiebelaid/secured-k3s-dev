@@ -1,10 +1,15 @@
-cloud: AzurePublicCloud
+﻿cloud: AzurePublicCloud
 
 controller:
   replicas: 1
   cloudConfigSecretName: azure-cloud-provider
   cloudConfigSecretNamespace: {{ azuredisk_csi_namespace }}
-  hostNetwork: true
+  featureGates:
+    csiProvisioner:
+      - Topology=true
+      - HonorPVReclaimPolicy=true
+    csiResizer:
+      - RecoverVolumeExpansionFailure=true
   nodeSelector:
     node-role: scraper
   tolerations:
@@ -22,7 +27,6 @@ node:
 linux:
   enabled: true
   kubelet: /var/lib/kubelet
-  hostNetwork: true
   nodeSelector:
     node-role: scraper
 

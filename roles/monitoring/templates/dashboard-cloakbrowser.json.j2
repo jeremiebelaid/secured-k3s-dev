@@ -1,0 +1,210 @@
+﻿{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "links": [],
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 100,
+      "title": "Overview",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "thresholds": { "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 30}, {"color": "red", "value": 36}] } },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 1 },
+      "id": 1,
+      "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "auto", "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto" },
+      "title": "Running Pods",
+      "type": "stat",
+      "targets": [{ "expr": "count(kube_pod_status_phase{namespace=\"mindflayer\", pod=~\"cloakbrowser-.*\", phase=\"Running\"})", "legendFormat": "pods" }]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "decimals": 1, "thresholds": { "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 80}, {"color": "red", "value": 100}] } },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 5, "x": 4, "y": 1 },
+      "id": 2,
+      "options": { "colorMode": "background", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto" },
+      "title": "Total CPU Usage (cores)",
+      "type": "stat",
+      "targets": [{ "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"mindflayer\", pod=~\"cloakbrowser-.*\", container=\"browser\"}[5m]))", "legendFormat": "CPU" }]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "bytes", "thresholds": { "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 120000000000}, {"color": "red", "value": 140000000000}] } },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 5, "x": 9, "y": 1 },
+      "id": 3,
+      "options": { "colorMode": "background", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto" },
+      "title": "Total RAM Usage",
+      "type": "stat",
+      "targets": [{ "expr": "sum(container_memory_working_set_bytes{namespace=\"mindflayer\", pod=~\"cloakbrowser-.*\", container=\"browser\"})", "legendFormat": "RAM" }]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "decimals": 0, "thresholds": { "steps": [{"color": "green", "value": null}, {"color": "red", "value": 1}] } },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 5, "x": 14, "y": 1 },
+      "id": 4,
+      "options": { "colorMode": "background", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto" },
+      "title": "OOM Kills (last 1h)",
+      "type": "stat",
+      "targets": [{ "expr": "sum(increase(kube_pod_container_status_last_terminated_reason{namespace=\"mindflayer\", pod=~\"cloakbrowser-.*\", reason=\"OOMKilled\"}[1h])) or vector(0)", "legendFormat": "OOMKills" }]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "decimals": 0, "thresholds": { "steps": [{"color": "green", "value": null}, {"color": "red", "value": 1}] } },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 5, "x": 19, "y": 1 },
+      "id": 5,
+      "options": { "colorMode": "background", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto" },
+      "title": "Pod Restarts (last 1h)",
+      "type": "stat",
+      "targets": [{ "expr": "sum(increase(kube_pod_container_status_restarts_total{namespace=\"mindflayer\", pod=~\"cloakbrowser-.*\"}[1h])) or vector(0)", "legendFormat": "restarts" }]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 },
+      "id": 101,
+      "title": "CPU Usage per Pod",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 15, "lineWidth": 1, "stacking": { "mode": "none" } }, "unit": "short", "decimals": 2 },
+        "overrides": []
+      },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 6 },
+      "id": 10,
+      "options": { "legend": { "calcs": ["mean", "max", "lastNotNull"], "displayMode": "table", "placement": "right", "sortBy": "Last *", "sortDesc": true }, "tooltip": { "mode": "multi" } },
+      "title": "CPU Usage per Pod (cores)",
+      "type": "timeseries",
+      "targets": [{ "expr": "rate(container_cpu_usage_seconds_total{namespace=\"mindflayer\", pod=~\"cloakbrowser-.*\", container=\"browser\"}[5m])", "legendFormat": "{% raw %}{{ pod }}{% endraw %}" }]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 16 },
+      "id": 102,
+      "title": "Memory Usage per Pod",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 15, "lineWidth": 1, "stacking": { "mode": "none" } }, "unit": "bytes", "decimals": 0 },
+        "overrides": []
+      },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 17 },
+      "id": 20,
+      "options": { "legend": { "calcs": ["mean", "max", "lastNotNull"], "displayMode": "table", "placement": "right", "sortBy": "Last *", "sortDesc": true }, "tooltip": { "mode": "multi" } },
+      "title": "RAM Working Set per Pod",
+      "type": "timeseries",
+      "targets": [{ "expr": "container_memory_working_set_bytes{namespace=\"mindflayer\", pod=~\"cloakbrowser-.*\", container=\"browser\"}", "legendFormat": "{% raw %}{{ pod }}{% endraw %}" }]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 30, "lineWidth": 1, "stacking": { "mode": "normal" } }, "unit": "bytes" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 27 },
+      "id": 21,
+      "options": { "legend": { "calcs": ["lastNotNull"], "displayMode": "table", "placement": "right", "sortBy": "Last *", "sortDesc": true }, "tooltip": { "mode": "multi" } },
+      "title": "RAM Working Set per Pod (stacked)",
+      "type": "timeseries",
+      "targets": [{ "expr": "container_memory_working_set_bytes{namespace=\"mindflayer\", pod=~\"cloakbrowser-.*\", container=\"browser\"}", "legendFormat": "{% raw %}{{ pod }}{% endraw %}" }]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 35 },
+      "id": 103,
+      "title": "Per Node Aggregation",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 20, "lineWidth": 1, "stacking": { "mode": "none" } }, "unit": "short", "decimals": 1 },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 36 },
+      "id": 30,
+      "options": { "legend": { "calcs": ["mean", "lastNotNull"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "title": "CloakBrowser CPU per Node (cores)",
+      "type": "timeseries",
+      "targets": [{ "expr": "sum by (node) (rate(container_cpu_usage_seconds_total{namespace=\"mindflayer\", pod=~\"cloakbrowser-.*\", container=\"browser\"}[5m]))", "legendFormat": "{% raw %}{{ node }}{% endraw %}" }]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 20, "lineWidth": 1, "stacking": { "mode": "none" } }, "unit": "bytes" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 36 },
+      "id": 31,
+      "options": { "legend": { "calcs": ["mean", "lastNotNull"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "title": "CloakBrowser RAM per Node",
+      "type": "timeseries",
+      "targets": [{ "expr": "sum by (node) (container_memory_working_set_bytes{namespace=\"mindflayer\", pod=~\"cloakbrowser-.*\", container=\"browser\"})", "legendFormat": "{% raw %}{{ node }}{% endraw %}" }]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 44 },
+      "id": 104,
+      "title": "Resource Utilization vs Limits",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "continuous-GrYlRd" }, "custom": { "fillOpacity": 10 }, "unit": "percentunit", "min": 0, "max": 1, "thresholds": { "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 0.7}, {"color": "red", "value": 0.9}] } },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 45 },
+      "id": 40,
+      "options": { "legend": { "calcs": ["mean", "lastNotNull"], "displayMode": "table", "placement": "right", "sortBy": "Last *", "sortDesc": true }, "tooltip": { "mode": "multi" } },
+      "title": "CPU Usage vs Limit (%)",
+      "type": "timeseries",
+      "targets": [{ "expr": "rate(container_cpu_usage_seconds_total{namespace=\"mindflayer\", pod=~\"cloakbrowser-.*\", container=\"browser\"}[5m]) / on(pod, namespace, container) kube_pod_container_resource_limits{namespace=\"mindflayer\", pod=~\"cloakbrowser-.*\", container=\"browser\", resource=\"cpu\"}", "legendFormat": "{% raw %}{{ pod }}{% endraw %}" }]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "continuous-GrYlRd" }, "custom": { "fillOpacity": 10 }, "unit": "percentunit", "min": 0, "max": 1, "thresholds": { "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 0.7}, {"color": "red", "value": 0.9}] } },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 45 },
+      "id": 41,
+      "options": { "legend": { "calcs": ["mean", "lastNotNull"], "displayMode": "table", "placement": "right", "sortBy": "Last *", "sortDesc": true }, "tooltip": { "mode": "multi" } },
+      "title": "RAM Usage vs Limit (%)",
+      "type": "timeseries",
+      "targets": [{ "expr": "container_memory_working_set_bytes{namespace=\"mindflayer\", pod=~\"cloakbrowser-.*\", container=\"browser\"} / on(pod, namespace, container) kube_pod_container_resource_limits{namespace=\"mindflayer\", pod=~\"cloakbrowser-.*\", container=\"browser\", resource=\"memory\"}", "legendFormat": "{% raw %}{{ pod }}{% endraw %}" }]
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["mindflayer", "cloakbrowser", "scraper"],
+  "templating": { "list": [] },
+  "time": { "from": "now-3h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "CloakBrowser Operations",
+  "uid": "cloakbrowser-ops",
+  "version": 1
+}

@@ -1,4 +1,4 @@
----
+﻿---
 - name: Check if k3s is already installed
   ansible.builtin.command: k3s --version
   register: _k3s_installed
@@ -28,6 +28,7 @@
       {% endfor %}
       --bind-address=0.0.0.0
       --advertise-address={{ tailscale_ip | default('127.0.0.1') }}
+      --node-ip={{ tailscale_ip | default('127.0.0.1') }}
       --node-external-ip={{ tailscale_ip | default('127.0.0.1') }}
 
 - name: Check current k3s systemd ExecStart

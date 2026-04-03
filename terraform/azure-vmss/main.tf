@@ -1,4 +1,4 @@
-locals {
+﻿locals {
   rg_name  = "${var.resource_prefix}-rg"
   vmss_name = "${var.resource_prefix}-vmss"
   vnet_name = "${var.resource_prefix}-vnet"
@@ -51,20 +51,8 @@ resource "azurerm_network_security_group" "vmss" {
   tags                = var.tags
 
   security_rule {
-    name                       = "AllowSSH"
-    priority                   = 100
-    direction                  = "Inbound"
-    access                     = "Allow"
-    protocol                   = "Tcp"
-    source_port_range          = "*"
-    destination_port_range     = "22"
-    source_address_prefix      = "*"
-    destination_address_prefix = "*"
-  }
-
-  security_rule {
     name                       = "AllowTailscaleUDP"
-    priority                   = 110
+    priority                   = 100
     direction                  = "Inbound"
     access                     = "Allow"
     protocol                   = "Udp"
@@ -90,6 +78,37 @@ resource "azurerm_network_security_group" "vmss" {
 resource "azurerm_subnet_network_security_group_association" "vmss" {
   subnet_id                 = azurerm_subnet.vmss.id
   network_security_group_id = azurerm_network_security_group.vmss.id
+}
+
+# ---------------------------------------------------------------------------
+# NAT Gateway (replaces per-instance public IPs for outbound SNAT)
+# ---------------------------------------------------------------------------
+resource "azurerm_public_ip" "nat" {
+  name                = "${var.resource_prefix}-nat-pip"
+  location            = azurerm_resource_group.this.location
+  resource_group_name = azurerm_resource_group.this.name
+  allocation_method   = "Static"
+  sku                 = "Standard"
+  tags                = var.tags
+}
+
+resource "azurerm_nat_gateway" "this" {
+  name                    = "${var.resource_prefix}-natgw"
+  location                = azurerm_resource_group.this.location
+  resource_group_name     = azurerm_resource_group.this.name
+  sku_name                = "Standard"
+  idle_timeout_in_minutes = 10
+  tags                    = var.tags
+}
+
+resource "azurerm_nat_gateway_public_ip_association" "this" {
+  nat_gateway_id       = azurerm_nat_gateway.this.id
+  public_ip_address_id = azurerm_public_ip.nat.id
+}
+
+resource "azurerm_subnet_nat_gateway_association" "vmss" {
+  subnet_id      = azurerm_subnet.vmss.id
+  nat_gateway_id = azurerm_nat_gateway.this.id
 }
 
 # ---------------------------------------------------------------------------
@@ -131,10 +150,6 @@ resource "azurerm_linux_virtual_machine_scale_set" "scraper" {
       name      = "internal"
       primary   = true
       subnet_id = azurerm_subnet.vmss.id
-
-      public_ip_address {
-        name = "vmss-pip"
-      }
     }
   }
 

@@ -1,4 +1,4 @@
----
+﻿---
 - name: Create azure-cloud-provider secret for CSI driver
   block:
     - name: Template azure cloud config
@@ -64,6 +64,39 @@
     --wait --timeout 5m
   register: _azuredisk_install
   changed_when: "'STATUS: deployed' in _azuredisk_install.stdout"
+
+- name: Patch CSI controller to use API server direct IP
+  ansible.builtin.command: >-
+    kubectl -n {{ azuredisk_csi_namespace }} set env
+    deployment/csi-azuredisk-controller
+    KUBERNETES_SERVICE_HOST={{ tailscale_ip }}
+    KUBERNETES_SERVICE_PORT=6443
+    --containers=*
+  register: _csi_env_patch
+  changed_when: "'updated' in _csi_env_patch.stdout"
+
+- name: Patch CSI controller leader election timeouts for hybrid networking
+  ansible.builtin.shell: |
+    kubectl -n {{ azuredisk_csi_namespace }} get deployment csi-azuredisk-controller \
+      -o jsonpath='{.spec.template.spec.containers[0].args}' | grep -q 'leader-election-lease-duration' && \
+      echo "already patched" && exit 0
+    kubectl -n {{ azuredisk_csi_namespace }} patch deployment csi-azuredisk-controller \
+      --type=json -p='[
+        {"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--leader-election-lease-duration=180s"},
+        {"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--leader-election-renew-deadline=120s"},
+        {"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--leader-election-retry-period=15s"},
+        {"op":"add","path":"/spec/template/spec/containers/1/args/-","value":"--leader-election-lease-duration=180s"},
+        {"op":"add","path":"/spec/template/spec/containers/1/args/-","value":"--leader-election-renew-deadline=120s"},
+        {"op":"add","path":"/spec/template/spec/containers/1/args/-","value":"--leader-election-retry-period=15s"},
+        {"op":"add","path":"/spec/template/spec/containers/2/args/-","value":"--leader-election-lease-duration=180s"},
+        {"op":"add","path":"/spec/template/spec/containers/2/args/-","value":"--leader-election-renew-deadline=120s"},
+        {"op":"add","path":"/spec/template/spec/containers/2/args/-","value":"--leader-election-retry-period=15s"},
+        {"op":"add","path":"/spec/template/spec/containers/3/args/-","value":"--leader-election-lease-duration=180s"},
+        {"op":"add","path":"/spec/template/spec/containers/3/args/-","value":"--leader-election-renew-deadline=120s"},
+        {"op":"add","path":"/spec/template/spec/containers/3/args/-","value":"--leader-election-retry-period=15s"}
+      ]'
+  register: _csi_le_patch
+  changed_when: "'patched' in _csi_le_patch.stdout"
 
 - name: Wait for CSI controller pod to be ready
   ansible.builtin.command: >-

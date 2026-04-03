@@ -1,4 +1,4 @@
-[tools]
+﻿[tools]
 python = "3.14"
 "pipx:ansible-core" = { version = "latest", uvx_args = "--with ansible" }
 helm = "3"
@@ -97,6 +97,11 @@ description = "Deploy only the Tailscale VPN role"
 depends = ["init"]
 run = "ansible-playbook playbooks/site.yml --tags tailscale --ask-become-pass"
 
+[tasks.deploy-monitoring]
+description = "Deploy Prometheus + Grafana monitoring stack"
+depends = ["init"]
+run = "ansible-playbook playbooks/site.yml --tags monitoring"
+
 [tasks.vmss-init]
 description = "Initialize Terraform for Azure VMSS scraper nodes"
 run = "terraform -chdir=terraform/azure-vmss init"
@@ -134,12 +139,61 @@ export TF_VAR_azure_tenant_id="$(az account show --query tenantId -o tsv)"
 terraform -chdir=terraform/azure-vmss destroy
 """
 
+[tasks.vmss-cleanup]
+description = "Remove orphaned k3s nodes (NotReady) and offline Tailscale devices for scraper nodes"
+run = """
+export TAILSCALE_API_KEY="${TAILSCALE_API_KEY:?Set TAILSCALE_API_KEY in .env}"
+
+echo "=== Cleaning orphaned k3s scraper nodes ==="
+for node in $(kubectl get nodes -l node-role=scraper --no-headers 2>/dev/null | awk '$2=="NotReady"{print $1}'); do
+  echo "  Deleting NotReady node: $node"
+  kubectl delete node "$node" --force --grace-period=0 2>/dev/null || true
+done
+echo "  Done (k3s)"
+
+echo ""
+echo "=== Cleaning offline Tailscale devices ==="
+tailscale status --json 2>/dev/null | python3 -c "
+import json, sys, urllib.request, os
+data = json.load(sys.stdin)
+api_key = os.environ['TAILSCALE_API_KEY']
+cleaned = 0
+for pid, p in data.get('Peer', {}).items():
+    name = p.get('HostName', '')
+    online = p.get('Online', False)
+    nid = p.get('ID', '')
+    if name.startswith('mf-scraper-') and not online and nid:
+        print(f'  Removing offline device: {name}')
+        req = urllib.request.Request(f'https://api.tailscale.com/api/v2/device/{nid}', method='DELETE')
+        req.add_header('Authorization', f'Bearer {api_key}')
+        try:
+            urllib.request.urlopen(req)
+            cleaned += 1
+        except Exception as e:
+            print(f'    Warning: {e}')
+print(f'  Done ({cleaned} devices removed)')
+" || true
+"""
+
+[tasks.vmss-scale]
+description = "Scale VMSS to N instances (cleans orphans first)"
+usage = 'arg "count" help="Target instance count"'
+depends = ["vmss-cleanup"]
+run = """
+export TF_VAR_k3s_master_tailscale_ip="$(tailscale ip -4)"
+export TF_VAR_k3s_token="$(sudo cat /var/lib/rancher/k3s/server/node-token)"
+export TF_VAR_tailscale_api_key="${TAILSCALE_API_KEY:?Set TAILSCALE_API_KEY in .env}"
+export TF_VAR_tailscale_tailnet="${TAILSCALE_TAILNET:?Set TAILSCALE_TAILNET in .env}"
+export TF_VAR_azure_tenant_id="$(az account show --query tenantId -o tsv)"
+terraform -chdir=terraform/azure-vmss apply -var="instance_count={{arg(name="count")}}" -auto-approve
+"""
+
 [tasks.vmss-status]
 description = "Show VMSS nodes in the k3s cluster"
 run = """
-echo "=== k3s nodes ==="
+echo "=== k3s scraper nodes ==="
 kubectl get nodes -o wide -l node-role=scraper
 echo ""
-echo "=== Tailscale peers ==="
-tailscale status
+echo "=== Tailscale peers (mf-scraper-*) ==="
+tailscale status | grep -E '(mf-scraper-|^$)' || echo "  No scraper peers found"
 """

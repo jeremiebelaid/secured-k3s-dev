@@ -1,0 +1,18 @@
+﻿---
+monitoring_namespace: monitoring
+monitoring_release_name: prometheus
+monitoring_chart_version: "82.16.2"
+monitoring_repo_url: "https://prometheus-community.github.io/helm-charts"
+
+# Grafana
+monitoring_grafana_node_port: 30090
+monitoring_grafana_admin_password: "{{ lookup('env', 'GRAFANA_ADMIN_PASSWORD') | default('prom-operator', true) }}"
+
+# Prometheus retention & storage
+monitoring_prometheus_retention: "15d"
+monitoring_prometheus_storage_size: "20Gi"
+monitoring_prometheus_storage_class: "openebs-hostpath"
+
+# Grafana storage
+monitoring_grafana_storage_size: "5Gi"
+monitoring_grafana_storage_class: "openebs-hostpath"

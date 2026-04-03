@@ -1,4 +1,4 @@
-kubeProxyReplacement: true
+﻿kubeProxyReplacement: true
 k8sServiceHost: "{{ tailscale_ip | default('127.0.0.1') }}"
 k8sServicePort: {{ api_port }}
 
@@ -14,9 +14,9 @@ bpf:
   masquerade: true
 
 encryption:
-  enabled: {{ cilium_wireguard_enabled | default(true) | lower }}
+  enabled: {{ cilium_wireguard_enabled | default(false) | lower }}
   type: wireguard
-  nodeEncryption: {{ cilium_wireguard_node_encryption | default(true) | lower }}
+  nodeEncryption: {{ cilium_wireguard_node_encryption | default(false) | lower }}
 
 hubble:
   enabled: {{ cilium_hubble_enabled | lower }}

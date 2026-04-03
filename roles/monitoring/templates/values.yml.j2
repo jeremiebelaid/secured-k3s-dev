@@ -1,0 +1,94 @@
+﻿## Prometheus Operator & Prometheus
+prometheus:
+  prometheusSpec:
+    retention: {{ monitoring_prometheus_retention }}
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: {{ monitoring_prometheus_storage_class }}
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: {{ monitoring_prometheus_storage_size }}
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+      limits:
+        memory: 2Gi
+    nodeSelector:
+      kubernetes.io/hostname: eva02
+
+## Grafana
+grafana:
+  adminPassword: "{{ monitoring_grafana_admin_password }}"
+  service:
+    type: NodePort
+    nodePort: {{ monitoring_grafana_node_port }}
+  persistence:
+    enabled: true
+    storageClassName: {{ monitoring_grafana_storage_class }}
+    size: {{ monitoring_grafana_storage_size }}
+  nodeSelector:
+    kubernetes.io/hostname: eva02
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      memory: 512Mi
+
+## Alertmanager
+alertmanager:
+  alertmanagerSpec:
+    nodeSelector:
+      kubernetes.io/hostname: eva02
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        memory: 256Mi
+
+## Prometheus Operator
+prometheusOperator:
+  nodeSelector:
+    kubernetes.io/hostname: eva02
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      memory: 512Mi
+
+## kube-state-metrics
+kube-state-metrics:
+  nodeSelector:
+    kubernetes.io/hostname: eva02
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      memory: 256Mi
+
+## Node exporter runs on ALL nodes (DaemonSet) — no nodeSelector
+prometheus-node-exporter:
+  hostRootFsMount:
+    mountPropagation: None
+  resources:
+    requests:
+      cpu: 50m
+      memory: 32Mi
+    limits:
+      memory: 128Mi
+
+## k3s-specific: these components are not scrapable in k3s
+kubeProxy:
+  enabled: false
+kubeEtcd:
+  enabled: false
+kubeControllerManager:
+  enabled: false
+kubeScheduler:
+  enabled: false
